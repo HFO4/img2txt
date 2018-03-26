@@ -222,10 +222,10 @@ def dither_image_to_web_palette(img, bgcolor):
 
 
 if __name__ == '__main__':
-
+    i=1
     dct = docopt(__doc__)
 
-    imgname = dct['<imgfile>']
+    imgname = "dct['<imgfile>']"
 
     maxLen = dct['--maxLen']
 
@@ -242,109 +242,90 @@ if __name__ == '__main__':
     dither = dct['--dither']
 
     target_aspect_ratio = dct['--targetAspect']
+    while True:
+        imgname = "C:/Users/i/Downloads/Video/i/"+str(i).zfill(3)+".png"
+        try:
+            maxLen = float(maxLen)
+        except:
+            maxLen = 100.0   # default maxlen: 100px
 
-    try:
-        maxLen = float(maxLen)
-    except:
-        maxLen = 100.0   # default maxlen: 100px
+        try:
+            fontSize = int(fontSize)
+        except:
+            fontSize = 7
 
-    try:
-        fontSize = int(fontSize)
-    except:
-        fontSize = 7
+        try:
+            # add fully opaque alpha value (255)
+            bgcolor = HTMLColorToRGB(bgcolor) + (255, )
+        except:
+            bgcolor = None
 
-    try:
-        # add fully opaque alpha value (255)
-        bgcolor = HTMLColorToRGB(bgcolor) + (255, )
-    except:
-        bgcolor = None
+        try:
+            target_aspect_ratio = float(target_aspect_ratio)
+        except:
+            target_aspect_ratio = 1.0   # default target_aspect_ratio: 1.0
 
-    try:
-        target_aspect_ratio = float(target_aspect_ratio)
-    except:
-        target_aspect_ratio = 1.0   # default target_aspect_ratio: 1.0
+        try:
+            img = load_and_resize_image(imgname, antialias, maxLen, target_aspect_ratio)
+        except IOError:
+            exit("File not found: " + imgname)
 
-    try:
-        img = load_and_resize_image(imgname, antialias, maxLen, target_aspect_ratio)
-    except IOError:
-        exit("File not found: " + imgname)
+        # Dither _after_ resizing
+        if dither:
+            img = dither_image_to_web_palette(img, bgcolor)
 
-    # Dither _after_ resizing
-    if dither:
-        img = dither_image_to_web_palette(img, bgcolor)
+        # get pixels
+        pixel = img.load()
 
-    # get pixels
-    pixel = img.load()
+        width, height = img.size
 
-    width, height = img.size
+        if do_ansi:
 
-    if do_ansi:
+            # Since the "current line" was not established by us, it has been
+            # filled with the current background color in the
+            # terminal. We have no ability to read the current background color
+            # so we want to refill the line with either
+            # the specified bg color or if none specified, the default bg color.
+            if bgcolor is not None:
+                # Note that we are making the assumption that the viewing terminal
+                # supports BCE (Background Color Erase) otherwise we're going to
+                # get the default bg color regardless. If a terminal doesn't
+                # support BCE you can output spaces but you'd need to know how many
+                # to output (too many and you get linewrap)
+                fill_string = ansi.getANSIbgstring_for_ANSIcolor(
+                    ansi.getANSIcolor_for_rgb(bgcolor))
+            else:
+                # reset bg to default (if we want to support terminals that can't
+                # handle this will need to instead use 0m which clears fg too and
+                # then when using this reset prior_fg_color to None too
+                fill_string = "\x1b[49m"
+            fill_string += "\x1b[K"          # does not move the cursor
+            sys.stdout.write(fill_string)
 
-        # Since the "current line" was not established by us, it has been
-        # filled with the current background color in the
-        # terminal. We have no ability to read the current background color
-        # so we want to refill the line with either
-        # the specified bg color or if none specified, the default bg color.
-        if bgcolor is not None:
-            # Note that we are making the assumption that the viewing terminal
-            # supports BCE (Background Color Erase) otherwise we're going to
-            # get the default bg color regardless. If a terminal doesn't
-            # support BCE you can output spaces but you'd need to know how many
-            # to output (too many and you get linewrap)
-            fill_string = ansi.getANSIbgstring_for_ANSIcolor(
-                ansi.getANSIcolor_for_rgb(bgcolor))
+            sys.stdout.write(
+                ansi.generate_ANSI_from_pixels(pixel, width, height, bgcolor)[0])
+
+            # Undo residual color changes, output newline because
+            # generate_ANSI_from_pixels does not do so
+            # removes all attributes (formatting and colors)
+            sys.stdout.write("\x1b[0m\n")
         else:
-            # reset bg to default (if we want to support terminals that can't
-            # handle this will need to instead use 0m which clears fg too and
-            # then when using this reset prior_fg_color to None too
-            fill_string = "\x1b[49m"
-        fill_string += "\x1b[K"          # does not move the cursor
-        sys.stdout.write(fill_string)
 
-        sys.stdout.write(
-            ansi.generate_ANSI_from_pixels(pixel, width, height, bgcolor)[0])
+            if clr:
+                # TODO - should handle bgcolor - probably by setting it as BG on
+                # the CSS for the pre
+                string = generate_HTML_for_image(pixel, width, height)
+            else:
+                string = generate_grayscale_for_image(
+                    pixel, width, height, bgcolor)
 
-        # Undo residual color changes, output newline because
-        # generate_ANSI_from_pixels does not do so
-        # removes all attributes (formatting and colors)
-        sys.stdout.write("\x1b[0m\n")
-    else:
+            # wrap with html
 
-        if clr:
-            # TODO - should handle bgcolor - probably by setting it as BG on
-            # the CSS for the pre
-            string = generate_HTML_for_image(pixel, width, height)
-        else:
-            string = generate_grayscale_for_image(
-                pixel, width, height, bgcolor)
+            template = "%s"
 
-        # wrap with html
-
-        template = """<!DOCTYPE HTML>
-        <html>
-        <head>
-          <meta http-equiv="content-type" content="text/html; charset=utf-8" />
-          <style type="text/css" media="all">
-            pre {
-              white-space: pre-wrap;       /* css-3 */
-              white-space: -moz-pre-wrap;  /* Mozilla, since 1999 */
-              white-space: -pre-wrap;      /* Opera 4-6 */
-              white-space: -o-pre-wrap;    /* Opera 7 */
-              word-wrap: break-word;       /* Internet Explorer 5.5+ */
-              font-family: 'Menlo', 'Courier New', 'Consola';
-              line-height: 1.0;
-              font-size: %dpx;
-            }
-          </style>
-        </head>
-        <body>
-          <pre>%s</pre>
-        </body>
-        </html>
-        """
-
-        html = template % (fontSize, string)
-        sys.stdout.write(html)
-
-
-    sys.stdout.flush()
+            html = template % (string)
+            sys.stdout.write(html)
+            with open("pic/"+str(i).zfill(3)+".txt","w") as f:
+                f.write(html)
+        sys.stdout.flush()
+        i=i+1
